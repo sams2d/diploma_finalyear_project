@@ -1,0 +1,251 @@
+//mux switch pins
+
+#define m11 2
+#define m12 3
+#define m21 4
+#define m22 5
+#define m31 6
+#define m32 7
+
+//left lane sensorlt pins
+
+#define lt 14
+#define le 8
+
+//right lane sensor pins
+
+#define re 9
+#define rt 15
+
+//extra lane triger pins
+
+#define et1 16
+#define et2 17
+
+//extra lane echo pins
+
+#define ee1 10
+#define ee2 11
+
+void setup() {
+
+  //initializing Serial to send information to serial monitor
+  
+  Serial.begin(9600);
+  
+  //initializing mux pins
+
+  pinMode(m11, OUTPUT); pinMode(m12, OUTPUT);
+  pinMode(m21, OUTPUT); pinMode(m22, OUTPUT);
+  pinMode(m31, OUTPUT); pinMode(m32, OUTPUT);
+
+  //initializing trigger pins
+
+  pinMode(rt, OUTPUT);  pinMode(lt, OUTPUT);
+  pinMode(et1, OUTPUT);  pinMode(et2, OUTPUT);
+
+  //initializing echo pins
+
+  pinMode(re, INPUT);  pinMode(le, INPUT);
+  pinMode(ee1, INPUT);  pinMode(ee2, INPUT);
+
+}
+
+/*
+the following function exe collects data from the ultrasonic sensor
+and returns a flag
+*/
+int exe(int trig, int echo) {
+  digitalWrite(trig, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trig, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trig, LOW);
+  float ret =  pulseIn(echo, HIGH);
+  float data = ret * 0.034 / 2;
+  if (data > 50 && data < 380) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
+//the following functions are the slave function 
+
+bool lslave() {
+  bool fl1 = exe(lt, le);
+  return fl1;
+}
+
+bool rslave() {
+  bool fr1 = exe(rt, re);
+  return fr1;
+
+}
+
+int eslave() {
+  int fe1 = exe(et1, ee1);
+  int fe2 = exe(et2, ee2);
+  return fe1 + fe2;
+
+}
+
+// the following functions are responsible for working for module
+
+//turn on the orange lights of every lane
+void alert_on() {
+  digitalWrite(m12, HIGH);
+  digitalWrite(m22, HIGH);
+  digitalWrite(m31, HIGH);
+}
+
+//turn off the orange lights of every lane
+
+void alert_off() {
+  digitalWrite(m12, LOW);
+  digitalWrite(m22, LOW);
+  digitalWrite(m31, LOW);
+}
+
+//dynamically turns on and off the orange lights
+
+void alert_switch() {
+  alert_on();
+  delay(500);
+  alert_off();
+}
+
+//green signal for the left right lane
+
+void signal_lrlane_on() {
+  digitalWrite(m11, HIGH);
+  digitalWrite(m21, HIGH);
+}
+
+//red signal for the left right lane
+
+void signal_lrlane_off() {
+  digitalWrite(m11, LOW);
+  digitalWrite(m21, LOW);
+}
+
+//green signal for the extra lane
+
+void signal_elane_on() {
+  digitalWrite(m32, HIGH);
+}
+
+// red signal for the extra lane
+
+void signal_elane_off() {
+  digitalWrite(m32, LOW);
+}
+
+// the following is the master function 
+
+void master() {
+  serial_writer();
+  int pl = lslave();
+  int pr = rslave();
+  int pe = eslave();
+  bool lval = lslave();
+  bool rval = rslave();
+
+  lval = lslave();
+  rval = rslave();
+  if (lval == true || rval == true) {
+    alert_switch();
+  }
+
+  while (pe >= 1 ) {
+    if (lval == true || rval == true) {
+      break;
+    }
+    signal_lrlane_off();
+    signal_elane_on();
+    delay(500);
+    lval = lslave();
+    rval = rslave();
+    if (lval == true || rval == true) {
+      break;
+    }
+    pe = eslave();
+  }
+
+
+  lval = lslave();
+  rval = rslave();
+  if (lval == true || rval == true) {
+    alert_switch();
+  }
+
+
+
+  while (pe == 0) {
+    if (lval == true || rval == true) {
+      break;
+    }
+    signal_elane_off();
+    signal_lrlane_on();
+    delay(500);
+    lval = lslave();
+    rval = rslave();
+    if (lval == true || rval == true) {
+      break;
+    }
+    pe = eslave();
+  }
+}
+
+//this function used for debuging purpose and is optional
+//prints the sensor data to the serial monitor
+void serial_writer() {
+
+  Serial.print("is left lane filled: ");
+  Serial.print(lslave());
+  Serial.print("\nis right lane filled: ");
+  Serial.print(rslave());
+  Serial.print("\nextra lane priority: ");
+  Serial.print(eslave());
+  Serial.print(",\n");
+
+}
+
+//the following function activaes the native timer based system
+
+void timer_mode() {
+  signal_elane_off();
+  signal_lrlane_off();
+  while (lslave() == true || rslave() == true) {
+    signal_lrlane_on();
+    delay(10000);
+    signal_lrlane_off();
+    signal_elane_on();
+    delay(10000);
+    signal_elane_off();
+  }
+}
+
+void loop() {
+
+  bool lval = lslave();
+  bool rval = rslave();
+  while (lval == false || rval == false) {
+    lval = lslave();
+    rval = rslave();
+    if (lval == true || rval == true) {
+      break;
+    }
+    master();
+
+  }
+
+  while (lval == true || rval == true) {
+    timer_mode();
+    lval = lslave();
+    rval = rslave();
+
+  }
+
+  delay(100);
+}
